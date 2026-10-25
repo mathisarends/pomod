@@ -15,6 +15,7 @@ import click
 
 from . import __version__, paths
 from .config import load_settings
+from .hooks import HookRunner
 from .protocol import (
     BAD_REQUEST,
     NOT_RUNNING,
@@ -44,9 +45,16 @@ class DaemonAlreadyRunningError(Exception):
 
 
 class Daemon:
-    def __init__(self, timer: Timer, store: StateStore, clock: Clock = time.time) -> None:
+    def __init__(
+        self,
+        timer: Timer,
+        store: StateStore,
+        hooks: HookRunner | None = None,
+        clock: Clock = time.time,
+    ) -> None:
         self.timer = timer
         self.store = store
+        self.hooks = hooks
         self.clock = clock
         self._subscribers: set[asyncio.Queue[Message]] = set()
         self._connections: set[asyncio.Task[None]] = set()
@@ -134,6 +142,8 @@ class Daemon:
         for event in events:
             log.info("%s (%s, cycle %s)", event, state["phase"], state["cycle"])
             self._broadcast({"event": event.value, "state": state})
+            if self.hooks:
+                self.hooks.run(event, state)
 
     def _broadcast(self, message: Message) -> None:
         for queue in self._subscribers:
@@ -158,6 +168,8 @@ class Daemon:
                 connection.cancel()
             await asyncio.gather(*self._connections, return_exceptions=True)
             await server.wait_closed()
+            if self.hooks:
+                await self.hooks.wait()
             socket_path.unlink(missing_ok=True)
             self.store.save(self.timer)
 
@@ -276,6 +288,7 @@ def main(socket_path: Path, verbose: bool) -> None:
         raise click.ClickException(f"invalid config {paths.config_file()}: {error}") from None
 
     try:
-        asyncio.run(_serve_until_signal(Daemon(timer, store), socket_path))
+        daemon = Daemon(timer, store, hooks=HookRunner(paths.hooks_dir()))
+        asyncio.run(_serve_until_signal(daemon, socket_path))
     except DaemonAlreadyRunningError as error:
         raise click.ClickException(str(error)) from None
