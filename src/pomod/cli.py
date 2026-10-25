@@ -1,14 +1,17 @@
 """pomo: command line client for pomod."""
 
 import json
+import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import click
 
-from . import __version__, client, paths, protocol
-from .durations import format_clock, parse_duration
+from . import __version__, client, paths, protocol, waybar
+from .display import describe
+from .durations import parse_duration
 from .protocol import Message
 
 EXIT_OK = 0
@@ -17,12 +20,7 @@ EXIT_USAGE = 2
 EXIT_DAEMON_UNAVAILABLE = 3
 EXIT_NOT_RUNNING = 4
 
-PHASE_LABELS = {
-    "idle": "Idle",
-    "work": "Work",
-    "short_break": "Short break",
-    "long_break": "Long break",
-}
+RECONNECT_DELAY = 2.0
 
 EPILOG = f"""\b
 Every command accepts --json and then prints exactly one JSON object.
@@ -131,6 +129,46 @@ for _name, _help in (
     _register_simple(_name, _help)
 
 
+@cli.command()
+@click.option("--json", "as_json", is_flag=True, help="Print raw daemon events instead.")
+@click.pass_obj
+def watch(options: Options, as_json: bool) -> None:
+    """Stream the state as Waybar JSON, one line per change.
+
+    Keeps running when pomod is down and reconnects once it is back.
+    """
+    try:
+        for line in watch_lines(options.socket_path, as_json):
+            click.echo(line)
+    except (BrokenPipeError, KeyboardInterrupt):
+        pass  # Waybar reloaded or the user hit Ctrl-C
+
+
+def watch_lines(
+    socket_path: Path, as_json: bool, reconnect_delay: float = RECONNECT_DELAY
+) -> Iterator[str]:
+    def render(message: Message) -> str:
+        if as_json:
+            return json.dumps(message)
+        return json.dumps(waybar.render(message["state"]), ensure_ascii=False)
+
+    previous = None
+    while True:
+        try:
+            for message in client.subscribe(socket_path):
+                line = render(message)
+                if line != previous:
+                    yield line
+                    previous = line
+        except (client.DaemonUnavailableError, ConnectionError):
+            pass
+        line = render({"event": "offline", "state": None})
+        if line != previous:
+            yield line
+            previous = line
+        time.sleep(reconnect_delay)
+
+
 def _send(options: Options, command: str, args: dict[str, Any], as_json: bool) -> None:
     try:
         response = client.request(options.socket_path, command, args)
@@ -161,19 +199,6 @@ def exit_code(response: Message) -> int:
             return EXIT_NOT_RUNNING
         case _:
             return EXIT_ERROR
-
-
-def describe(state: Message) -> str:
-    """One line for humans, e.g. `Work 18:42 left · cycle 2/4 · 1 done`."""
-    if state["status"] == "idle":
-        return "Idle."
-    label = PHASE_LABELS[state["phase"]]
-    if state["status"] == "paused":
-        label += " (paused)"
-    return (
-        f"{label} {format_clock(state['remaining'])} left"
-        f" · cycle {state['cycle']}/{state['cycles']} · {state['completed']} done"
-    )
 
 
 def main() -> None:

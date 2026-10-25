@@ -10,8 +10,9 @@ from pomod.cli import (
     EXIT_OK,
     EXIT_USAGE,
     cli,
-    describe,
+    watch_lines,
 )
+from pomod.display import describe
 
 needs_unix_socket = pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="needs Unix sockets")
 
@@ -94,3 +95,26 @@ def test_toggle_skip_stop(pomo):
     assert "Paused" in pomo("toggle").output
     assert "Skipped to short_break" in pomo("skip").output
     assert "Stopped" in pomo("stop").output
+
+
+def test_watch_reports_offline_daemon(tmp_path):
+    lines = watch_lines(tmp_path / "nope.sock", as_json=False)
+    assert json.loads(next(lines))["class"] == ["offline"]
+
+
+@needs_unix_socket
+def test_watch_streams_waybar_lines(server, pomo):
+    lines = watch_lines(server.path, as_json=False)
+    assert json.loads(next(lines))["class"] == ["idle"]
+    pomo("start")
+    line = json.loads(next(lines))
+    assert line["class"] == ["work", "running"]
+    assert line["text"] == "🍅 01:40"
+
+
+@needs_unix_socket
+def test_watch_json_mode_passes_events_through(server, pomo):
+    lines = watch_lines(server.path, as_json=True)
+    assert json.loads(next(lines))["event"] == "state"
+    pomo("start")
+    assert json.loads(next(lines))["event"] == "work-start"
