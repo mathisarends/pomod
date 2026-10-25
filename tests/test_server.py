@@ -5,7 +5,7 @@ import socket
 
 import pytest
 
-from pomod.daemon import DaemonAlreadyRunningError, _claim_socket
+from pomod.daemon import DaemonAlreadyRunningError, _claim_socket, _listen
 
 pytestmark = pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="needs Unix sockets")
 
@@ -53,6 +53,18 @@ def test_subscribe_streams_events(server):
 def test_second_daemon_refuses_to_start(server):
     with pytest.raises(DaemonAlreadyRunningError):
         _claim_socket(server.path)
+    # Connections are handled in order: once this answers, the probe is done too
+    # and does not race the shutdown.
+    send(server.path, b'{"cmd": "status"}\n')
+
+
+def test_socket_accepts_as_soon_as_it_exists(socket_path):
+    sock = _listen(socket_path)
+    try:
+        assert [p.name for p in socket_path.parent.iterdir()] == [socket_path.name]
+        connect(socket_path).close()  # backlog accepts before the server runs
+    finally:
+        sock.close()
 
 
 def test_leftover_socket_file_is_replaced(socket_path):

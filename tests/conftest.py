@@ -45,11 +45,15 @@ class ServerThread:
 
     def __init__(self, daemon: Daemon, path: Path) -> None:
         self.path = path
-        self._loop = asyncio.new_event_loop()
         self._stop = asyncio.Event()
-        self._thread = threading.Thread(
-            target=self._loop.run_until_complete, args=(daemon.serve(path, self._stop),)
-        )
+        self._runner = asyncio.Runner()
+        self._thread = threading.Thread(target=self._run, args=(daemon,))
+
+    def _run(self, daemon: Daemon) -> None:
+        # Runner cleans up leftover tasks like asyncio.run() does in production,
+        # e.g. a client that connected in the middle of shutdown.
+        with self._runner:
+            self._runner.run(daemon.serve(self.path, self._stop))
 
     def start(self) -> None:
         self._thread.start()
@@ -61,10 +65,9 @@ class ServerThread:
 
     def stop(self) -> None:
         if self._thread.is_alive():
-            self._loop.call_soon_threadsafe(self._stop.set)
+            self._runner.get_loop().call_soon_threadsafe(self._stop.set)
             self._thread.join(timeout=5)
             assert not self._thread.is_alive(), "daemon did not shut down"
-        self._loop.close()
 
 
 @pytest.fixture

@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 import math
+import os
 import signal
 import socket
 import time
@@ -153,9 +154,7 @@ class Daemon:
     # -- socket ----------------------------------------------------------------
 
     async def serve(self, socket_path: Path, stop: asyncio.Event) -> None:
-        _claim_socket(socket_path)
-        server = await asyncio.start_unix_server(self._handle_client, path=socket_path)
-        socket_path.chmod(0o600)
+        server = await asyncio.start_unix_server(self._handle_client, sock=_listen(socket_path))
         clock = asyncio.create_task(self._run_clock())
         log.info("pomod %s listening on %s", __version__, socket_path)
         try:
@@ -231,6 +230,27 @@ def _int_args(args: dict[str, Any], allowed: frozenset[str]) -> dict[str, int]:
         if not isinstance(value, int) or isinstance(value, bool):
             raise RequestError(BAD_REQUEST, f"{name} must be an integer (seconds)")
     return args
+
+
+def _listen(path: Path) -> socket.socket:
+    """Open the socket under a temporary name and move it into place when ready.
+
+    Clients never see a socket that refuses connections or is readable by others.
+    """
+    _claim_socket(path)
+    staging = path.with_name(f".{path.name}.{os.getpid()}")
+    staging.unlink(missing_ok=True)
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.bind(str(staging))
+        staging.chmod(0o600)
+        sock.listen()
+        staging.rename(path)
+    except BaseException:
+        sock.close()
+        staging.unlink(missing_ok=True)
+        raise
+    return sock
 
 
 def _claim_socket(path: Path) -> None:
