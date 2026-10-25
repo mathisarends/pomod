@@ -1,0 +1,16 @@
+/* Classes set by `pomo watch`:
+   offline, idle, work, short-break, long-break, break, running, paused */
+
+#custom-pomo.work {
+  color: #e06c75;
+}
+
+#custom-pomo.break {
+  color: #98c379;
+}
+
+#custom-pomo.paused,
+#custom-pomo.idle,
+#custom-pomo.offline {
+  opacity: 0.5;
+}

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Copy to ~/.config/pomo/hooks/ and make it executable.
+notify-send --app-name=pomo "Focus time" "Cycle $POMO_CYCLE/$POMO_CYCLES, $((POMO_DURATION / 60)) minutes"

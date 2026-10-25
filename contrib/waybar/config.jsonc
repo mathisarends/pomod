@@ -1,0 +1,10 @@
+// Add "custom/pomo" to one of your modules-left/center/right lists.
+{
+  "custom/pomo": {
+    "exec": "pomo watch",
+    "return-type": "json",
+    "on-click": "pomo toggle",
+    "on-click-right": "pomo skip",
+    "on-click-middle": "pomo stop"
+  }
+}

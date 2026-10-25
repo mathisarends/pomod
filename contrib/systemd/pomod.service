@@ -1,0 +1,15 @@
+# Install:  cp pomod.service ~/.config/systemd/user/
+#           systemctl --user enable --now pomod
+[Unit]
+Description=pomod Pomodoro daemon
+Documentation=https://github.com/mathisarends/pomod
+
+[Service]
+Type=simple
+# Path from `uv tool install pomod` / `pipx install pomod`.
+# Use /usr/bin/pomod if it came from your package manager.
+ExecStart=%h/.local/bin/pomod
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

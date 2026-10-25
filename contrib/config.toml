@@ -1,0 +1,8 @@
+# Copy to ~/.config/pomo/config.toml. All keys are optional.
+# Durations accept 25 (minutes), "25m", "90s" or "1h30m".
+# pomod reads this on startup: systemctl --user restart pomod
+
+work = "25m"
+short_break = "5m"
+long_break = "15m"
+cycles = 4  # work phases until a long break

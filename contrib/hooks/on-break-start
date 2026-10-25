@@ -1,0 +1,8 @@
+#!/bin/sh
+# Copy to ~/.config/pomo/hooks/ and make it executable.
+if [ "$POMO_PHASE" = "long_break" ]; then
+    title="Long break"
+else
+    title="Short break"
+fi
+notify-send --app-name=pomo "$title" "$((POMO_DURATION / 60)) minutes. $POMO_COMPLETED done so far."
